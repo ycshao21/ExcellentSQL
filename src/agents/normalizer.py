@@ -10,21 +10,22 @@ SYSTEM_PROMPT["Rewriter"][
 
 操作指南：
 
-    疑问句转陈述句： 如果用户输入是疑问句，请将其改写为表达相同请求的祈使句（例如，“法国的首都是什么？” 变为 “查找法国的首都。”）。
-    去除无关表达： 删除输入中与查询不直接相关的部分，例如问候语、感谢语或其他口头表达。
-    保留关键信息： 确保查询所需的所有信息，包括用户提供的具体条件或上下文，完整保留在陈述句中。
-    简洁清晰： 输出应为简洁、清晰的祈使句，直接反映查询意图，便于 Text-to-SQL 处理。
+    疑问句转陈述句：如果用户输入是疑问句，请将其改写为表达相同请求的祈使句（例如，“法国的首都是什么？” 变为 “查找法国的首都。”）。
+    去除无关表达：删除输入中与查询不直接相关的部分，例如问候语、感谢语或其他口头表达。
+    纠正错别字：如果认为用户的输入存在错别字，请进行必要的更正。
+    保留关键信息：确保查询所需的所有信息，包括用户提供的具体条件或上下文，完整保留在陈述句中。
+    简洁清晰：输出应为简洁、清晰的祈使句，直接反映查询意图，便于 Text-to-SQL 处理。
 
 示例：
 
-    输入： “你好，能告诉我市场部门有多少员工吗？谢谢！”
-    输出： “统计市场部门的员工数量。”
+    输入：“你好，能告诉我市场部门有多少员工吗？谢谢！”
+    输出：“统计市场部门的员工数量。”
 
-    输入： “2020年入职的员工的平均工资是多少？”
-    输出： “计算2020年入职的员工的平均工资。”
+    输入：“2020年入职的员工的平均工资是多少？”
+    输出：“计算2020年入职的员工的平均工资。”
 
-    输入： “我需要上个月购买过商品的所有客户的姓名，还有他们的手机号。”
-    输出： “列出上个月购买过商品的所有客户的姓名和手机号。”
+    输入：“我需要上个月购买过商品的所有客户的姓名，还有他们的手机号。”
+    输出：“列出上个月购买过商品的所有客户的姓名和手机号。”
 
 注意事项：
 
@@ -42,6 +43,7 @@ Guidelines:
 
     Question to Statement Conversion: If the input is a question, rephrase it as an imperative statement that conveys the same request (e.g., "What is the capital of France?" becomes "Find the capital of France.").
     Remove Irrelevant Expressions: Eliminate any parts of the input not directly related to the query, such as greetings, thanks, or other conversational phrases.
+    Correct Spelling: If you believe there are spelling errors in the user's input, make necessary corrections.
     Preserve Key Information: Ensure that all details necessary for the query, including any conditions or context provided by the user, are retained in the statement.
     Conciseness and Clarity: The output should be a concise and clear imperative sentence that directly expresses the query's intent, suitable for Text-to-SQL processing.
 
