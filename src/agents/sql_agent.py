@@ -79,17 +79,15 @@ Output Requirement: Return only the modified pure SQL statement, without any com
 
 class SQLAgent:
     def __init__(self):
-
         self.client = OpenAI(
             api_key=os.getenv("API_KEY"),
             base_url=os.getenv("BASE_URL"),
         )
         self.model = "deepseek-v3-250324"
-
         self.language = os.getenv("LANGUAGE", "en")
 
     def generate_sql(
-        self, descriptions: list, prev_sqls: list, index: int, context
+        self, descriptions: list, context
     ) -> str:
         """
         function:
@@ -101,19 +99,11 @@ class SQLAgent:
         """
         system_prompt = SYSTEM_PROMPT["SQLAgent_generate"][self.language]
 
-        if index == 0:
-            user_message = USER_PROMPT["SQLAgent_generate"][self.language].format(
-                description=descriptions[0],
-                info=context,
-            )
-        else:
-            user_message = USER_PROMPT["SQLAgent_generate_multi"][self.language].format(
-                prev_description="\n".join(descriptions[:index]),
-                prev_sqls="\n".join(prev_sqls),
-                description=descriptions[index],
-                info=context,
-            )
-
+        user_message = USER_PROMPT["SQLAgent_generate"][self.language].format(
+            description=descriptions[0],
+            info=context,
+        )
+        
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -129,50 +119,9 @@ class SQLAgent:
         )
 
         sql = response.choices[0].message.content.strip()
-
-        # if not sql.upper().startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE')):
-        #     raise ValueError("Generated response is not a valid SQL query")
-
         print(sql)
         return sql
 
-    def adjust_sql(self, sql: str, feedback: str) -> str:
-        """
-        args:
-            sql: "SELECT * FROM users WHERE username = 'yqxv2'"
-            feedback: "table users not in database.Maybe its name is user?"
-        return:
-            str: SQL
-        """
-
-        system_prompt = SYSTEM_PROMPT["SQLAgent_adjust"][self.language]
-        user_message = USER_PROMPT["SQLAgent_adjust"][self.language].format(
-            sql=sql,
-            feedback=feedback,
-        )
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": user_message,
-                },
-            ],
-        )
-        modified_sql = response.choices[0].message.content.strip()
-
-        # if not modified_sql.upper().startswith(
-        #     ("SELECT", "INSERT", "UPDATE", "DELETE")
-        # ):
-        #     raise ValueError("Generated response is not a valid SQL query")
-
-        print(modified_sql)
-        return modified_sql
 
 
 if __name__ == "__main__":
@@ -180,9 +129,4 @@ if __name__ == "__main__":
 
     sql.generate_sql(
         description="查询用户yqxv2的邮箱", context="数据库中的用户表名为user"
-    )
-
-    sql.adjust_sql(
-        sql="SELECT * FROM users WHERE username = 'yqxv2'",
-        suggestions="table users not in database.Maybe its name is user?",
     )
