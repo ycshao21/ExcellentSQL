@@ -64,7 +64,7 @@ Do not add or infer any information not present in the user's input. Your role i
 """
 
 
-class Normalizer:
+class QueryNormalizer:
 
     def __init__(
         self,

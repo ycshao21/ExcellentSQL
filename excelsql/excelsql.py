@@ -1,11 +1,10 @@
-import json
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
-from .agents.normalizer import Normalizer
+from .query_normalizer import QueryNormalizer
 from .agents.sql_agent import SQLAgent
 
-from .utils import logger
+from .utils.log import logger
 
 
 def _extract_table_name(file_path: str) -> str:
@@ -20,12 +19,23 @@ def _extract_table_name(file_path: str) -> str:
     return table_name
 
 
+def _extract_table_info(df: pd.DataFrame) -> str:
+    column_info = {}
+    for column in df.columns:
+        column_info[column] = {
+            "type": str(df[column].dtype),
+            "unique_values": list(df[column].unique()),
+        }
+    return column_info
+
+
 class ExcelSQL:
     def __init__(self, num_generators: int = 5):
-        self.normalizer = Normalizer(model="gpt-4o-mini")
+        self.query_normalizer = QueryNormalizer(model="gpt-4o-mini")
         self.sql_generators = [SQLAgent() for _ in range(num_generators)]
+        self.document_generator = None
+        self.ddl_generator = None
 
-        self.active_table = None
         self.active_document = None
 
     def upload_excel(self, file_path: str) -> bool:
@@ -42,12 +52,7 @@ class ExcelSQL:
         logger.info(f"表格名称: {table_name}")
 
         # 提取表格信息
-        column_info = {}
-        for column in df.columns:
-            column_info[column] = {
-                "type": str(df[column].dtype),
-                "unique_values": list(df[column].unique()),
-            }
+        column_info = _extract_table_info(df)
 
         # 生成文档
         document = self.document_generator(table_name, column_info)
@@ -62,16 +67,15 @@ class ExcelSQL:
 
         logger.info(f"成功上传Excel数据至数据库")
 
-        self.active_table = table_name
+        # 自动将当前表格设置为活动表格
         self.active_document = document
         return True
 
-    def set_active_table(self, table_name: str):
-        self.active_document = get_document(table_name)
-        self.active_table = table_name
+    # def set_active_table(self, table_name: str):
+    #     self.active_document = _get_document(table_name)
 
     def normalize_query(self, query: str) -> str:
-        return self.normalizer.normalize(query)
+        return self.query_normalizer.normalize(query)
 
     def generate_sqls_and_check(
         self,
