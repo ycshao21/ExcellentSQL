@@ -87,7 +87,7 @@ class SQLAgent:
         self.language = os.getenv("LANGUAGE", "en")
 
     def generate_sql(
-        self, descriptions: list, context
+        self, description, context=None
     ) -> str:
         """
         function:
@@ -100,7 +100,7 @@ class SQLAgent:
         system_prompt = SYSTEM_PROMPT["SQLAgent_generate"][self.language]
 
         user_message = USER_PROMPT["SQLAgent_generate"][self.language].format(
-            description=descriptions[0],
+            description=description,
             info=context,
         )
         
