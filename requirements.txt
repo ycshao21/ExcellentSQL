@@ -1,4 +1,0 @@
-uv
-openai
-mcp
-pandas

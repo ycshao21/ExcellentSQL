@@ -1,0 +1,14 @@
+excel_path: "data/users.xlsx"
+
+language: "zh"
+num_generators: 5
+
+document_generator:
+  model: "deepseek-v3-250324"
+  limit_value: 50  # -1 if no limit
+
+ddl_generator:
+  model: "deepseek-v3-250324"
+
+query_normalizer:
+  model: "gpt-4o-mini"

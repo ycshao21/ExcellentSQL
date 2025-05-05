@@ -4,7 +4,7 @@ from openai import OpenAI
 SYSTEM_PROMPT = {"Rewriter": {}}
 
 SYSTEM_PROMPT["Rewriter"][
-    "cn"
+    "zh"
 ] = """
 您是一个为 Text-to-SQL 系统服务的查询规范化助手。您的任务是将用户的原始输入转化为一个简洁、标准化的陈述句，该陈述句应捕捉查询的核心内容，不包含与查询无关的多余语言。这个陈述句将用于后续的实体和关系分析。
 
@@ -74,9 +74,12 @@ class QueryNormalizer:
         base_url = os.getenv("BASE_URL")
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-        self.language = os.getenv("LANGUAGE", "en")
+        self.language = "zh"
 
         self.model = model
+
+    def __call__(self, query: str) -> str:
+        return self.normalize(query)
 
     def normalize(self, query: str) -> str:
         """

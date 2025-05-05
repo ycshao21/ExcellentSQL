@@ -1,17 +1,22 @@
-import asyncio
 from dotenv import load_dotenv
-from excelsql.utils.log import logger
+import hydra
+from omegaconf import DictConfig
 
+from excelsql.utils.log import logger
 from excelsql.excelsql import ExcelSQL
 
-app = ExcelSQL()
 
+@hydra.main(
+    version_base="1.3",
+    config_path="../config",
+    config_name="main",
+)
+def demo(cfg: DictConfig):
+    app = ExcelSQL(cfg)
 
-async def demo():
-    excel_path = "data/users.xlsx"
-    app.upload_excel(excel_path)
+    app.upload_excel(cfg.excel_path)
 
-    query = ""
+    query = "一共有多少学历为硕士的用户？"
     logger.info(f"用户输入：{query}")
 
     normalized_query = app.normalize_query(query)
@@ -29,4 +34,4 @@ async def demo():
 
 if __name__ == "__main__":
     load_dotenv()
-    asyncio.run(demo())
+    demo()

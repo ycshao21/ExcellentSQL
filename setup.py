@@ -14,6 +14,7 @@ setup(
         "python-dotenv",
         "colorama",
         "openpyxl",
+        "hydra-core",
     ],
     python_requires=">=3.12",
     classifiers=[
