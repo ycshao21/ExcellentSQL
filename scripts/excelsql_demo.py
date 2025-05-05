@@ -24,7 +24,7 @@ def demo(cfg: DictConfig):
 
     results = app.generate_sqls_and_check(
         query=normalized_query,
-        concurrent=True,
+        concurrent=cfg.concurrent,
     )
     logger.info(f"SQL生成结果：{results}")
 

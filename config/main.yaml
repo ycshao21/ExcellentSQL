@@ -1,5 +1,7 @@
 excel_path: "data/users.xlsx"
 
+concurrent: true
+
 language: "zh"
 num_generators: 5
 

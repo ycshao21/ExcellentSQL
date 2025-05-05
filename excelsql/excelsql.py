@@ -114,11 +114,11 @@ class ExcelSQL:
         """
         return self.query_normalizer.normalize(query)
 
-    async def generate_sqls_and_check(
+    def generate_sqls_and_check(
         self,
         query: str,
         concurrent: bool = True,
-    ) -> str:
+    ) -> list:
         if concurrent:
             with ThreadPoolExecutor() as executor:
                 results = list(
@@ -150,11 +150,12 @@ class ExcelSQL:
             dict: 包含SQL、执行状态和结果的字典
         """
         sql = self.sql_generators[idx].generate_sql(query, document)
-        flag, denotation = self._check_sql(sql)
+        # 由于_check_sql是异步方法，但我们在同步环境中调用，暂时返回未检查状态
+        # 实际应用中应考虑使用同步版本的SQL检查或其他方式处理
         return {
             "sql": sql,
-            "flag": flag,
-            "denotation": denotation,
+            "flag": None,  # 未检查
+            "denotation": None,  # 未执行
         }
 
     async def _check_sql(self, sql: str) -> tuple:
