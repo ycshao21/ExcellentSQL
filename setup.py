@@ -15,6 +15,7 @@ setup(
         "colorama",
         "openpyxl",
         "hydra-core",
+        "streamlit",
     ],
     python_requires=">=3.12",
     classifiers=[
