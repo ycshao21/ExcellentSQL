@@ -4,19 +4,21 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 from concurrent.futures import ThreadPoolExecutor
-
+from sqlalchemy import create_engine, text
 from .query_normalizer import QueryNormalizer
 from .agents.sql_agent import SQLAgent
 from .agents.check_agent import CheckAgent
 from .ddl_generator import DDLGenerator
 from .document_generator import DocumentGenerator
-
 from .utils.log import logger
-
+from .utils.sort import Sort
 
 def _extract_table_name(file_path: str) -> str:
-    # 从文件路径中提取文件名
-    table_name = file_path.split("/")[-1].split(".")[0]
+    # 从文件路径中提取文件名，同时处理Windows和Unix风格的路径
+    file_name = os.path.basename(file_path)  # 使用os.path.basename正确提取文件名
+    
+    # 去掉扩展名
+    table_name = file_name.split(".")[0]
 
     # 后处理
     table_name = table_name.lower()
@@ -71,11 +73,15 @@ class ExcelSQL:
         document = self.document_generator(table_name, column_info)
         logger.info(f"表格 {table_name} 文档已生成")
 
-        local_output_dir = Path(
-            hydra.core.hydra_config.HydraConfig.get()["runtime"]["output_dir"]
-        )
+        # 确保输出目录路径正确，并创建完整目录结构
+        output_base_dir = "outputs"
+        os.makedirs(output_base_dir, exist_ok=True)
+        
         if save_to_local:
-            doc_path = local_output_dir / f"{table_name}_doc.txt"
+            # 创建完整文件路径
+            doc_path = os.path.join(output_base_dir, f"{table_name}_doc.txt")
+            
+            # 保存文档
             with open(doc_path, "w") as f:
                 f.write(document)
             logger.info(f"表格 {table_name} 文档已保存至 {doc_path}")
@@ -87,13 +93,41 @@ class ExcelSQL:
         logger.info(f"表格 {table_name} DDL已生成")
 
         if save_to_local:
-            ddl_path = local_output_dir / f"{table_name}.sql"
+            # 保存DDL文件
+            ddl_path = os.path.join(output_base_dir, f"{table_name}.sql")
             with open(ddl_path, "w") as f:
                 f.write(ddl)
             logger.info(f"表格 {table_name} DDL已保存至 {ddl_path}")
 
-        # TODO: 执行DDL，将表格数据和文档上传到数据库
-        # logger.info(f"成功上传Excel数据至数据库")
+        # 使用sqlalchemy执行DDL并上传数据
+        try:
+            db_url = os.getenv("DB_URL")
+            if not db_url:
+                logger.error("数据库连接URL未设置")
+                return False
+            
+            # 创建数据库引擎
+            engine = create_engine(db_url)
+            
+            # 执行DDL创建表
+            with engine.connect() as connection:
+                connection.execute(text(ddl))
+                connection.commit()
+                logger.info(f"表格 {table_name} 成功创建")
+                
+                # 将DataFrame数据上传到数据库
+                df.to_sql(
+                    name=table_name, 
+                    con=engine, 
+                    if_exists='append', 
+                    index=False,
+                    chunksize=1000
+                )
+                logger.info(f"成功上传Excel数据至数据库表 {table_name}")
+                
+        except Exception as e:
+            logger.error(f"上传数据到数据库失败: {e}")
+            return False
 
         # 自动将当前表格设置为活动表格
         self.active_document = document
@@ -150,13 +184,40 @@ class ExcelSQL:
             dict: 包含SQL、执行状态和结果的字典
         """
         sql = self.sql_generators[idx].generate_sql(query, document)
-        # 由于_check_sql是异步方法，但我们在同步环境中调用，暂时返回未检查状态
-        # 实际应用中应考虑使用同步版本的SQL检查或其他方式处理
-        return {
-            "sql": sql,
-            "flag": None,  # 未检查
-            "denotation": None,  # 未执行
-        }
+        
+        try:
+            db_url = os.getenv("DB_URL")
+            if not db_url:
+                return {
+                    "sql": sql,
+                    "flag": False,
+                    "denotation": "数据库连接URL未设置"
+                }
+            
+            engine = create_engine(db_url)
+            
+            with engine.connect() as connection:
+                result = connection.execute(text(sql))
+                
+                if result.returns_rows:
+                    rows = result.fetchall()
+                    columns = result.keys()
+                    
+                    result_data = [dict(zip(columns, row)) for row in rows]
+                else:
+                    result_data = {"affected_rows": result.rowcount}
+                    
+                return {
+                    "sql": sql,
+                    "flag": True,
+                    "denotation": result_data
+                }
+        except Exception as e:
+            return {
+                "sql": sql,
+                "flag": False,
+                "denotation": f"执行错误: {str(e)}"
+            }
 
     async def _check_sql(self, sql: str) -> tuple:
         """
@@ -199,6 +260,12 @@ class ExcelSQL:
             logger.error(f"执行SQL失败: {e}")
             return False, f"Error: {str(e)}"
 
-    def poll_sqls(self, sqls: list) -> list:
-        # TODO: 根据结果进行排序
-        return sqls[0]
+    def poll_sqls(self, sqls: list) -> tuple:
+        sorter = Sort(sqls)
+        sorted_sqls = sorter.sort_by_result_frequency()
+        
+        sql = sorted_sqls[0]["sql"]
+        flag = sorted_sqls[0]["flag"]
+        denotation = sorted_sqls[0]["denotation"]
+        
+        return sql, flag, denotation

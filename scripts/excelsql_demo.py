@@ -1,10 +1,14 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 import hydra
 from omegaconf import DictConfig
 
 from excelsql.utils.log import logger
 from excelsql.excelsql import ExcelSQL
-
+from excelsql.utils.sort import Sort
 
 @hydra.main(
     version_base="1.3",
