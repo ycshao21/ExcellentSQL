@@ -67,6 +67,43 @@ def get_sql_response(user_question):
 
         # 获取最终SQL和结果
         sql, flag, denotation = excel_sql_app.poll_sqls(results)
+        
+        # 检查SQL并在需要时重新生成
+        max_attempts = 3  # 最大尝试次数
+        current_attempt = 0
+        check_flag = False
+        check_result = None
+        
+        while current_attempt < max_attempts:
+            try:
+                # 检查SQL
+                check_flag, check_result = excel_sql_app._check_sql(sql)
+                
+                if check_flag:  # SQL检查成功
+                    denotation = check_result
+                    break
+                else:  # SQL检查失败，尝试重新生成
+                    st.warning(f"SQL检查失败（尝试 {current_attempt+1}/{max_attempts}）: {check_result}")
+                    
+                    # 重新生成SQL
+                    sql = excel_sql_app._regenerate_sql(
+                        query=normalized_query,
+                        document=excel_sql_app.active_document,
+                        sql=sql,
+                        error=str(check_result)
+                    )
+                    
+                    current_attempt += 1
+            except Exception as e:
+                st.error(f"SQL检查/重新生成过程中发生错误: {e}")
+                import traceback
+                st.error(traceback.format_exc())
+                current_attempt += 1
+                
+        if not check_flag:
+            st.error(f"在{max_attempts}次尝试后仍无法生成有效SQL")
+            if check_result:
+                st.error(f"最后一次错误: {check_result}")
 
         # 构建响应
         response = f"""
@@ -74,6 +111,9 @@ def get_sql_response(user_question):
         ```sql
         {sql}
         ```
+        
+        ### 查询状态
+        {'✅ 成功' if check_flag else '❌ 失败'}
         
         ### 查询结果
         ```

@@ -212,46 +212,60 @@ class ExcelSQL:
         except Exception as e:
             return {"sql": sql, "flag": False, "denotation": f"执行错误: {str(e)}"}
 
-    async def _check_sql(self, sql: str) -> tuple:
+    def _check_sql(self, sql: str) -> tuple:
         """
         检查SQL语句的正确性
-
+        
         args:
             sql (str): 要检查的SQL语句
 
         return:
             tuple: (执行状态, 执行结果)
         """
-        # 如果check_agent未初始化，则初始化它
-        if self.check_agent is None:
-            self.check_agent = CheckAgent()
-            # 连接到数据库服务器
-            try:
-                await self.check_agent.connect_to_server(
-                    command="uvx",
-                    args=[
-                        "--from",
-                        "mcp-alchemy==2025.04.16.110003",
-                        "--with",
-                        "pymysql",
-                        "--refresh-package",
-                        "mcp-alchemy",
-                        "mcp-alchemy",
-                    ],
-                    env={"DB_URL": os.getenv("DB_URL")},
-                )
-                logger.info("成功连接到数据库服务器")
-            except Exception as e:
-                logger.error(f"连接数据库服务器失败: {e}")
-                return False, f"Error: {str(e)}"
-
         try:
-            # 执行SQL并获取结果
-            result = await self.check_agent.run(sql)
-            return True, result
+            with self.db_engine.connect() as connection:
+                result = connection.execute(text(sql))
+                
+                if result.returns_rows:
+                    rows = result.fetchall()
+                    columns = result.keys()
+                    result_data = [dict(zip(columns, row)) for row in rows]
+                else:
+                    result_data = {"affected_rows": result.rowcount}
+                    
+                return True, result_data
         except Exception as e:
-            logger.error(f"执行SQL失败: {e}")
-            return False, f"Error: {str(e)}"
+            return False, f"执行错误: {str(e)}"
+
+    def _regenerate_sql(self, query: str, document: str, sql: str, error: str) -> str:
+        """
+        在SQL执行失败时，尝试重新生成SQL语句
+        
+        args:
+            query (str): 原始查询语句
+            document (str): 文档信息
+            sql (str): 失败的SQL语句
+            error (str): 错误信息
+            
+        return:
+            str: 重新生成的SQL语句
+        """
+        # 初始化CheckAgent（如果尚未初始化）
+        if not self.check_agent:
+            self.check_agent = CheckAgent()
+            
+        # 使用check_agent修复SQL
+        fixed_sql = self.check_agent.fix_sql(query, document, sql, error)
+        
+        # 如果修复失败，尝试使用现有SQL生成器重新生成
+        if not fixed_sql:
+            # 随机选择一个SQL生成器重新生成
+            import random
+            generator_idx = random.randint(0, len(self.sql_generators) - 1)
+            context = f"之前的SQL执行失败: {sql}\n错误信息: {error}"
+            fixed_sql = self.sql_generators[generator_idx].generate_sql(query, document, context)
+            
+        return fixed_sql
 
     def poll_sqls(self, sqls: list) -> tuple:
         sorter = Sort(sqls)
