@@ -10,7 +10,7 @@ SYSTEM_PROMPT = {
 SYSTEM_PROMPT["DocumentGenerator"][
     "zh"
 ] = """
-您是一位专业的数据分析师和文档编写专家。您的任务是根据提供的表格名称和列信息，使用清晰、专业的语言撰写一份详细的数据库表格文档。
+您是一位专业的数据分析师和文档编写专家。您的任务是根据提供的表格名称和列信息，使用清晰、专业的语言撰写一份详细的数据库表格文档，以便开发人员和数据分析师理解和使用该表格。
 
 请遵循以下规则：
 1. 为表格提供一个简洁明了的描述，说明其用途
@@ -19,24 +19,24 @@ SYSTEM_PROMPT["DocumentGenerator"][
 4. 无需识别主键和外键，您只分析一张表格
 5. 无需给出数据存储方面的修改建议，你只负责根据实际数据写文档
 6. 如果表格列名没有实义，请你根据数据进行合理的命名
+7. 如果字段有确定的取值范围，请使用取值范围；否则，请使用取值示例
 
-您的输出应该是一个结构化的文档，详细描述表格的结构和用途，以便开发人员和数据分析师理解和使用该表格。
-"""
+请严格按以下模板生成文档：
+```
+表格文档：<表格名称>
 
-SYSTEM_PROMPT["DocumentGenerator"][
-    "en"
-] = """
-Please write a detailed database table document based on the provided table name and column information.
+表格描述：
+<表格用途>
 
-Please follow these rules:
-1. Provide a clear and concise description of the table's purpose
-2. Analyze the data type and unique values of each column to infer its purpose and meaning
-3. Output plain text only, do not use Markdown format
-4. Do not identify primary keys and foreign keys, you only analyze one table
-5. Do not provide data storage-related modification suggestions, you only write documents based on actual data
-6. If the table column name does not have meaning, please name it reasonably based on the data
+字段详细信息：
+<序号>. <字段名>
+    - 字段名语言：<字段名语言>
+    - 数据类型：<数据类型>
+    - 取值范围/取值示例：<取值范围/取值示例>
+    - 字段描述：<字段描述>
 
-Your output should be a structured document that provides a detailed description of the table's structure and purpose, enabling developers and data analysts to understand and use the table.
+...
+```
 """
 
 USER_PROMPT = {
@@ -49,20 +49,12 @@ USER_PROMPT["DocumentGenerator"][
 请根据以下信息生成表格文档：
 
 表名：{table_name}
-列信息：{column_info}
+字段信息：
+```
+{column_info}
+```
 
-请提供一份详细的表格文档，包括表格描述和每个列的详细信息。
-"""
-
-USER_PROMPT["DocumentGenerator"][
-    "en"
-] = """
-Please generate a table document based on the following information:
-
-Table name: {table_name}
-Column information: {column_info}
-
-Please provide a detailed table document, including table description and detailed information for each column.
+请按照规定格式输出一份详细的数据库表格文档。
 """
 
 

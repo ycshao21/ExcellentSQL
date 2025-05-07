@@ -16,6 +16,7 @@ setup(
         "openpyxl",
         "hydra-core",
         "streamlit",
+        "sqlalchemy",
     ],
     python_requires=">=3.12",
     classifiers=[

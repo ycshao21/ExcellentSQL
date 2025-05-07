@@ -13,10 +13,11 @@ from .document_generator import DocumentGenerator
 from .utils.log import logger
 from .utils.sort import Sort
 
+
 def _extract_table_name(file_path: str) -> str:
     # 从文件路径中提取文件名，同时处理Windows和Unix风格的路径
     file_name = os.path.basename(file_path)  # 使用os.path.basename正确提取文件名
-    
+
     # 去掉扩展名
     table_name = file_name.split(".")[0]
 
@@ -45,6 +46,14 @@ def _extract_table_info(df: pd.DataFrame) -> str:
 
 class ExcelSQL:
     def __init__(self, cfg: DictConfig):
+        db_url = os.getenv("DB_URL")
+        if not db_url:
+            logger.error("数据库连接URL未设置")
+            return False
+
+        # 创建数据库引擎
+        self.db_engine = create_engine(db_url)
+
         self.query_normalizer = QueryNormalizer(**cfg.query_normalizer)
         self.sql_generators = [SQLAgent() for _ in range(cfg.num_generators)]
         self.document_generator = DocumentGenerator(**cfg.document_generator)
@@ -76,11 +85,13 @@ class ExcelSQL:
         # 确保输出目录路径正确，并创建完整目录结构
         output_base_dir = "outputs"
         os.makedirs(output_base_dir, exist_ok=True)
-        
+
         if save_to_local:
             # 创建完整文件路径
-            doc_path = os.path.join(output_base_dir, f"{table_name}_doc.txt")
-            
+            document_dir = os.path.join(output_base_dir, "document")
+            os.makedirs(document_dir, exist_ok=True)
+            doc_path = os.path.join(document_dir, f"{table_name}.txt")
+
             # 保存文档
             with open(doc_path, "w") as f:
                 f.write(document)
@@ -94,47 +105,47 @@ class ExcelSQL:
 
         if save_to_local:
             # 保存DDL文件
-            ddl_path = os.path.join(output_base_dir, f"{table_name}.sql")
+            ddl_dir = os.path.join(output_base_dir, "ddl")
+            os.makedirs(ddl_dir, exist_ok=True)
+            ddl_path = os.path.join(ddl_dir, f"{table_name}.sql")
             with open(ddl_path, "w") as f:
                 f.write(ddl)
             logger.info(f"表格 {table_name} DDL已保存至 {ddl_path}")
 
         # 使用sqlalchemy执行DDL并上传数据
         try:
-            db_url = os.getenv("DB_URL")
-            if not db_url:
-                logger.error("数据库连接URL未设置")
-                return False
-            
-            # 创建数据库引擎
-            engine = create_engine(db_url)
-            
             # 执行DDL创建表
-            with engine.connect() as connection:
+            with self.db_engine.connect() as connection:
                 connection.execute(text(ddl))
                 connection.commit()
                 logger.info(f"表格 {table_name} 成功创建")
-                
+
                 # 将DataFrame数据上传到数据库
+                # FIXME: to_sql也会创建表格，这里暂时用append模式
                 df.to_sql(
-                    name=table_name, 
-                    con=engine, 
-                    if_exists='append', 
+                    name=table_name,
+                    con=self.db_engine,
+                    if_exists="append",
                     index=False,
-                    chunksize=1000
+                    chunksize=1000,
                 )
                 logger.info(f"成功上传Excel数据至数据库表 {table_name}")
-                
+
         except Exception as e:
             logger.error(f"上传数据到数据库失败: {e}")
             return False
 
-        # 自动将当前表格设置为活动表格
-        self.active_document = document
         return True
 
-    # def set_active_table(self, table_name: str):
-    #     self.active_document = _get_document(table_name)
+    def read_document(self, table_name: str):
+        doc_path = f"outputs/document/{table_name}.txt"
+        try:
+            # 读取所有内容
+            with open(doc_path, "r") as f:
+                self.active_document = f.read()
+                logger.info(f"已加载文档: {doc_path}")
+        except FileNotFoundError:
+            logger.error(f"文档 {doc_path} 不存在")
 
     def normalize_query(self, query: str) -> str:
         """
@@ -184,40 +195,22 @@ class ExcelSQL:
             dict: 包含SQL、执行状态和结果的字典
         """
         sql = self.sql_generators[idx].generate_sql(query, document)
-        
+
         try:
-            db_url = os.getenv("DB_URL")
-            if not db_url:
-                return {
-                    "sql": sql,
-                    "flag": False,
-                    "denotation": "数据库连接URL未设置"
-                }
-            
-            engine = create_engine(db_url)
-            
-            with engine.connect() as connection:
+            with self.db_engine.connect() as connection:
                 result = connection.execute(text(sql))
-                
+
                 if result.returns_rows:
                     rows = result.fetchall()
                     columns = result.keys()
-                    
+
                     result_data = [dict(zip(columns, row)) for row in rows]
                 else:
                     result_data = {"affected_rows": result.rowcount}
-                    
-                return {
-                    "sql": sql,
-                    "flag": True,
-                    "denotation": result_data
-                }
+
+                return {"sql": sql, "flag": True, "denotation": result_data}
         except Exception as e:
-            return {
-                "sql": sql,
-                "flag": False,
-                "denotation": f"执行错误: {str(e)}"
-            }
+            return {"sql": sql, "flag": False, "denotation": f"执行错误: {str(e)}"}
 
     async def _check_sql(self, sql: str) -> tuple:
         """
@@ -263,9 +256,9 @@ class ExcelSQL:
     def poll_sqls(self, sqls: list) -> tuple:
         sorter = Sort(sqls)
         sorted_sqls = sorter.sort_by_result_frequency()
-        
+
         sql = sorted_sqls[0]["sql"]
         flag = sorted_sqls[0]["flag"]
         denotation = sorted_sqls[0]["denotation"]
-        
+
         return sql, flag, denotation
