@@ -13,4 +13,4 @@ ddl_generator:
   model: "deepseek-v3-250324"
 
 query_normalizer:
-  model: "gpt-4o-mini"
+  model: "deepseek-v3-250324"

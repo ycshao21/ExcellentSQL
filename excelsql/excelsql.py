@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import create_engine, text
 from .query_normalizer import QueryNormalizer
 from .agents.sql_agent import SQLAgent
-from .agents.check_agent import CheckAgent
 from .ddl_generator import DDLGenerator
 from .document_generator import DocumentGenerator
 from .utils.log import logger
@@ -15,12 +14,8 @@ from .utils.sort import Sort
 
 
 def _extract_table_name(file_path: str) -> str:
-    # 从文件路径中提取文件名，同时处理Windows和Unix风格的路径
-    file_name = os.path.basename(file_path)  # 使用os.path.basename正确提取文件名
-
-    # 去掉扩展名
+    file_name = os.path.basename(file_path)
     table_name = file_name.split(".")[0]
-
     # 后处理
     table_name = table_name.lower()
     table_name = "_".join(table_name.split())
@@ -51,15 +46,11 @@ class ExcelSQL:
             logger.error("数据库连接URL未设置")
             return False
 
-        # 创建数据库引擎
         self.db_engine = create_engine(db_url)
-
         self.query_normalizer = QueryNormalizer(**cfg.query_normalizer)
         self.sql_generators = [SQLAgent() for _ in range(cfg.num_generators)]
         self.document_generator = DocumentGenerator(**cfg.document_generator)
         self.ddl_generator = DDLGenerator(**cfg.ddl_generator)
-        self.check_agent = None  # 将在需要时初始化
-
         self.active_document = None
 
     def upload_excel(self, file_path: str, save_to_local: bool = True) -> bool:
@@ -148,16 +139,8 @@ class ExcelSQL:
             logger.error(f"文档 {doc_path} 不存在")
 
     def normalize_query(self, query: str) -> str:
-        """
-        将用户输入转化为标准的陈述句
-
-        args:
-            query (str): 用户输入的原始语句
-
-        return:
-            str: 转换后的标准化语句
-        """
         return self.query_normalizer.normalize(query)
+
 
     def generate_sqls_and_check(
         self,
@@ -183,45 +166,12 @@ class ExcelSQL:
         return results
 
     def _generate_sql_and_check(self, query: str, document: str, idx: int = 0) -> dict:
-        """
-        生成SQL并检查其正确性
-
-        args:
-            query (str): 查询语句
-            document (str): 文档信息
-            idx (int): SQL生成器索引
-
-        return:
-            dict: 包含SQL、执行状态和结果的字典
-        """
         sql = self.sql_generators[idx].generate_sql(query, document)
+        flag, denotation = self._check_sql(sql)
+        return {"sql": sql, "flag": flag, "denotation": denotation}
 
-        try:
-            with self.db_engine.connect() as connection:
-                result = connection.execute(text(sql))
-
-                if result.returns_rows:
-                    rows = result.fetchall()
-                    columns = result.keys()
-
-                    result_data = [dict(zip(columns, row)) for row in rows]
-                else:
-                    result_data = {"affected_rows": result.rowcount}
-
-                return {"sql": sql, "flag": True, "denotation": result_data}
-        except Exception as e:
-            return {"sql": sql, "flag": False, "denotation": f"执行错误: {str(e)}"}
 
     def _check_sql(self, sql: str) -> tuple:
-        """
-        检查SQL语句的正确性
-        
-        args:
-            sql (str): 要检查的SQL语句
-
-        return:
-            tuple: (执行状态, 执行结果)
-        """
         try:
             with self.db_engine.connect() as connection:
                 result = connection.execute(text(sql))
@@ -244,18 +194,6 @@ class ExcelSQL:
         error: str,
         concurrent: bool = True,
     ) -> list:
-        """
-        并行或串行重新生成多条SQL语句
-
-        args:
-            query (str): 查询语句
-            sql (str): 失败的SQL语句
-            error (str): 错误信息
-            concurrent (bool): 是否并行生成
-            
-        return:
-            list: 包含SQL、执行状态和结果的字典列表
-        """
         if concurrent:
             with ThreadPoolExecutor() as executor:
                 results = list(
@@ -277,50 +215,12 @@ class ExcelSQL:
         return results
 
     def _regenerate_sql(self, query: str, document: str, sql: str, error: str, idx: int = 0) -> dict:
-        """
-        重新生成单条SQL并检查其正确性
+        context = f"之前执行失败的SQL: {sql}，执行时的错误信息: {error}"
+        document = document + context
+        regenerated_sql = self.sql_generators[idx].generate_sql(query, document)
+        flag, denotation = self._check_sql(regenerated_sql)
+        return {"sql": regenerated_sql, "flag": flag, "denotation": denotation}
 
-        args:
-            query (str): 查询语句
-            document (str): 文档信息
-            sql (str): 失败的SQL语句
-            error (str): 错误信息
-            idx (int): SQL生成器索引
-            
-        return:
-            dict: 包含SQL、执行状态和结果的字典
-        """
-        # 初始化CheckAgent（如果尚未初始化）
-        if not self.check_agent:
-            self.check_agent = CheckAgent()
-            
-        # 生成上下文信息
-        context = f"之前的SQL执行失败: {sql}\n错误信息: {error}"
-        
-        # 使用check_agent或SQL生成器修复SQL
-        if idx == 0 and self.check_agent:  # 第一个生成器使用CheckAgent的修复
-            regenerated_sql = self.check_agent.fix_sql(query, document, sql, error)
-            if not regenerated_sql:  # 如果CheckAgent修复失败，则使用普通生成器
-                regenerated_sql = self.sql_generators[idx].generate_sql(query, document, context)
-        else:  # 其他生成器直接使用普通生成器
-            regenerated_sql = self.sql_generators[idx].generate_sql(query, document, context)
-
-        # 检查SQL的有效性
-        try:
-            with self.db_engine.connect() as connection:
-                result = connection.execute(text(regenerated_sql))
-
-                if result.returns_rows:
-                    rows = result.fetchall()
-                    columns = result.keys()
-
-                    result_data = [dict(zip(columns, row)) for row in rows]
-                else:
-                    result_data = {"affected_rows": result.rowcount}
-
-                return {"sql": regenerated_sql, "flag": True, "denotation": result_data}
-        except Exception as e:
-            return {"sql": regenerated_sql, "flag": False, "denotation": f"执行错误: {str(e)}"}
 
     def poll_sqls(self, sqls: list) -> tuple:
         sorter = Sort(sqls)
@@ -331,3 +231,5 @@ class ExcelSQL:
         denotation = sorted_sqls[0]["denotation"]
 
         return sql, flag, denotation
+
+

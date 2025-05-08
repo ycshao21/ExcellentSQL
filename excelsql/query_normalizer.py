@@ -68,14 +68,12 @@ class QueryNormalizer:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-4o",
     ):
         api_key = os.getenv("API_KEY")
         base_url = os.getenv("BASE_URL")
         self.client = OpenAI(api_key=api_key, base_url=base_url)
-
         self.language = "zh"
-
         self.model = model
 
     def __call__(self, query: str) -> str:
@@ -113,3 +111,12 @@ class QueryNormalizer:
 
         normalized_query = completion.choices[0].message.content.strip()
         return normalized_query
+
+
+if __name__ == "__main__":
+    query_normalizer = QueryNormalizer()
+    query = "请问安华的QQ是什么"
+    normalized_query = query_normalizer(query)
+    print(normalized_query)
+
+

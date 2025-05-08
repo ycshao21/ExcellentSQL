@@ -1,6 +1,5 @@
 import sys
 import os
-# 将项目根目录添加到Python路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
@@ -10,10 +9,8 @@ from dotenv import load_dotenv
 
 from excelsql.excelsql import ExcelSQL
 
-# 直接读取配置文件，不使用hydra
 def init_excel_sql():
     try:
-        # 加载环境变量
         load_dotenv()
         
         # 从config文件夹中读取main.yaml
@@ -35,11 +32,9 @@ def init_excel_sql():
 if 'excel_sql_app' not in st.session_state:
     st.session_state.excel_sql_app = init_excel_sql()
     
-    # 如果初始化失败，显示错误信息
     if st.session_state.excel_sql_app is None:
         st.error("ExcelSQL初始化失败，请检查配置和环境设置")
 
-# 设置页面配置
 st.set_page_config(
     page_title="EXCEL问答助手",
     page_icon="🤖",

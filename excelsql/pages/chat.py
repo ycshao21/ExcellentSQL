@@ -19,10 +19,19 @@ if "excel_sql_app" not in st.session_state or st.session_state.excel_sql_app is 
     st.error("ExcelSQL应用未初始化，请返回主页重新启动应用")
     st.stop()
 
+# 初始化调试模式设置
+if "debug_mode" not in st.session_state:
+    st.session_state.debug_mode = False
+
 st.markdown("# 💬 与文件聊天")
 st.sidebar.header("与文件聊天")
 st.write("""选择一个已上传的 Excel 文件，然后输入您的问题。""")
 
+# 调试模式开关
+with st.sidebar.expander("高级设置"):
+    st.session_state.debug_mode = st.checkbox("调试模式", value=st.session_state.debug_mode)
+    if st.session_state.debug_mode:
+        st.info("调试模式已启用，将显示详细错误信息。")
 
 # 获取上传文件列表
 def get_uploaded_tables():
@@ -63,7 +72,7 @@ def get_sql_response(user_question):
             query=normalized_query,
             concurrent=True,
         )
-        print(results)
+        # print(results)
 
         # 获取最终SQL和结果
         sql, flag, denotation = excel_sql_app.poll_sqls(results)
@@ -73,45 +82,48 @@ def get_sql_response(user_question):
         current_attempt = 0
         check_flag = False
         check_result = None
+        error_messages = []  # 记录错误信息
         
-        while current_attempt < max_attempts:
-            try:
-                # 检查SQL
-                check_flag, check_result = excel_sql_app._check_sql(sql)
-                
-                if check_flag:  # SQL检查成功
-                    denotation = check_result
-                    break
-                else:  # SQL检查失败，尝试重新生成
-                    st.warning(f"SQL检查失败（尝试 {current_attempt+1}/{max_attempts}）: {check_result}")
+        with st.spinner("正在验证SQL并执行..."):
+            while current_attempt < max_attempts:
+                try:
+                    # 检查SQL
+                    check_flag, check_result = excel_sql_app._check_sql(sql)
                     
-                    # 重新生成多条SQL
-                    regen_results = excel_sql_app.regenerate_sqls(
-                        query=normalized_query,
-                        sql=sql,
-                        error=str(check_result),
-                        concurrent=True
-                    )
-                    
-                    # 选择最佳SQL
-                    if regen_results:
-                        sql, check_flag, check_result = excel_sql_app.poll_sqls(regen_results)
+                    if check_flag:  # SQL检查成功
+                        denotation = check_result
+                        break
+                    else:  # SQL检查失败，尝试重新生成
+                        error_msg = f"SQL检查失败（尝试 {current_attempt+1}/{max_attempts}）: {check_result}"
+                        error_messages.append(error_msg)
                         
-                        if check_flag:  # 找到有效SQL
-                            denotation = check_result
-                            break
-                    
+                        # 重新生成多条SQL
+                        regen_results = excel_sql_app.regenerate_sqls(
+                            query=normalized_query,
+                            sql=sql,
+                            error=str(check_result),
+                            concurrent=True
+                        )
+                        
+                        # 选择最佳SQL
+                        if regen_results:
+                            sql, check_flag, check_result = excel_sql_app.poll_sqls(regen_results)
+                            
+                            if check_flag:  # 找到有效SQL
+                                denotation = check_result
+                                break
+                        
+                        current_attempt += 1
+                except Exception as e:
+                    error_msg = f"SQL检查/重新生成过程中发生错误: {e}"
+                    error_messages.append(error_msg)
                     current_attempt += 1
-            except Exception as e:
-                st.error(f"SQL检查/重新生成过程中发生错误: {e}")
-                import traceback
-                st.error(traceback.format_exc())
-                current_attempt += 1
-                
+        
+        # 只在最后一次尝试仍然失败时显示错误信息
         if not check_flag:
             st.error(f"在{max_attempts}次尝试后仍无法生成有效SQL")
-            if check_result:
-                st.error(f"最后一次错误: {check_result}")
+            if error_messages:
+                st.error(f"错误信息: {error_messages[-1]}")  # 只显示最后一次错误
 
         # 构建响应
         response = f"""
@@ -128,15 +140,18 @@ def get_sql_response(user_question):
         {denotation}
         ```
         """
-
-        st.success("成功执行SQL查询。")
+        if check_flag:
+            st.success("成功执行SQL查询。")
         return response
 
     except Exception as e:
         st.error(f"执行SQL查询时发生错误: {e}")
         import traceback
-
-        st.error(traceback.format_exc())  # 显示详细错误信息
+        
+        # 只在调试模式下显示详细错误信息
+        if st.session_state.get('debug_mode', False):
+            st.error(traceback.format_exc())  # 显示详细错误信息
+        
         return f"查询出错: {e}"
 
 
