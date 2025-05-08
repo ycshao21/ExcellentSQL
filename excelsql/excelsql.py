@@ -237,35 +237,90 @@ class ExcelSQL:
         except Exception as e:
             return False, f"执行错误: {str(e)}"
 
-    def _regenerate_sql(self, query: str, document: str, sql: str, error: str) -> str:
+    def regenerate_sqls(
+        self,
+        query: str,
+        sql: str,
+        error: str,
+        concurrent: bool = True,
+    ) -> list:
         """
-        在SQL执行失败时，尝试重新生成SQL语句
-        
+        并行或串行重新生成多条SQL语句
+
         args:
-            query (str): 原始查询语句
+            query (str): 查询语句
+            sql (str): 失败的SQL语句
+            error (str): 错误信息
+            concurrent (bool): 是否并行生成
+            
+        return:
+            list: 包含SQL、执行状态和结果的字典列表
+        """
+        if concurrent:
+            with ThreadPoolExecutor() as executor:
+                results = list(
+                    executor.map(
+                        self._regenerate_sql,
+                        [query] * len(self.sql_generators),
+                        [self.active_document] * len(self.sql_generators),
+                        [sql] * len(self.sql_generators),
+                        [error] * len(self.sql_generators),
+                        range(len(self.sql_generators)),
+                    )
+                )
+        else:
+            results = [
+                self._regenerate_sql(query, self.active_document, sql, error, idx)
+                for idx in range(len(self.sql_generators))
+            ]
+
+        return results
+
+    def _regenerate_sql(self, query: str, document: str, sql: str, error: str, idx: int = 0) -> dict:
+        """
+        重新生成单条SQL并检查其正确性
+
+        args:
+            query (str): 查询语句
             document (str): 文档信息
             sql (str): 失败的SQL语句
             error (str): 错误信息
+            idx (int): SQL生成器索引
             
         return:
-            str: 重新生成的SQL语句
+            dict: 包含SQL、执行状态和结果的字典
         """
         # 初始化CheckAgent（如果尚未初始化）
         if not self.check_agent:
             self.check_agent = CheckAgent()
             
-        # 使用check_agent修复SQL
-        fixed_sql = self.check_agent.fix_sql(query, document, sql, error)
+        # 生成上下文信息
+        context = f"之前的SQL执行失败: {sql}\n错误信息: {error}"
         
-        # 如果修复失败，尝试使用现有SQL生成器重新生成
-        if not fixed_sql:
-            # 随机选择一个SQL生成器重新生成
-            import random
-            generator_idx = random.randint(0, len(self.sql_generators) - 1)
-            context = f"之前的SQL执行失败: {sql}\n错误信息: {error}"
-            fixed_sql = self.sql_generators[generator_idx].generate_sql(query, document, context)
-            
-        return fixed_sql
+        # 使用check_agent或SQL生成器修复SQL
+        if idx == 0 and self.check_agent:  # 第一个生成器使用CheckAgent的修复
+            regenerated_sql = self.check_agent.fix_sql(query, document, sql, error)
+            if not regenerated_sql:  # 如果CheckAgent修复失败，则使用普通生成器
+                regenerated_sql = self.sql_generators[idx].generate_sql(query, document, context)
+        else:  # 其他生成器直接使用普通生成器
+            regenerated_sql = self.sql_generators[idx].generate_sql(query, document, context)
+
+        # 检查SQL的有效性
+        try:
+            with self.db_engine.connect() as connection:
+                result = connection.execute(text(regenerated_sql))
+
+                if result.returns_rows:
+                    rows = result.fetchall()
+                    columns = result.keys()
+
+                    result_data = [dict(zip(columns, row)) for row in rows]
+                else:
+                    result_data = {"affected_rows": result.rowcount}
+
+                return {"sql": regenerated_sql, "flag": True, "denotation": result_data}
+        except Exception as e:
+            return {"sql": regenerated_sql, "flag": False, "denotation": f"执行错误: {str(e)}"}
 
     def poll_sqls(self, sqls: list) -> tuple:
         sorter = Sort(sqls)

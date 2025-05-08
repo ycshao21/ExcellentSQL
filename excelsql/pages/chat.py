@@ -85,13 +85,21 @@ def get_sql_response(user_question):
                 else:  # SQL检查失败，尝试重新生成
                     st.warning(f"SQL检查失败（尝试 {current_attempt+1}/{max_attempts}）: {check_result}")
                     
-                    # 重新生成SQL
-                    sql = excel_sql_app._regenerate_sql(
+                    # 重新生成多条SQL
+                    regen_results = excel_sql_app.regenerate_sqls(
                         query=normalized_query,
-                        document=excel_sql_app.active_document,
                         sql=sql,
-                        error=str(check_result)
+                        error=str(check_result),
+                        concurrent=True
                     )
+                    
+                    # 选择最佳SQL
+                    if regen_results:
+                        sql, check_flag, check_result = excel_sql_app.poll_sqls(regen_results)
+                        
+                        if check_flag:  # 找到有效SQL
+                            denotation = check_result
+                            break
                     
                     current_attempt += 1
             except Exception as e:
